@@ -211,13 +211,15 @@ impl Config {
     /// `Config::with_root`
     ///
     /// This joins all relative paths with the current root and attempts to make them canonic
+    #[must_use]
     pub fn canonic(self) -> Self {
         let root = self.__root.0.clone();
         self.canonic_at(root)
     }
 
     /// Joins all relative paths with the given root
-    pub fn canonic_at(self, root: impl AsRef<Path>) -> Self {
+    #[must_use]
+    pub fn canonic_at(self, _root: impl AsRef<Path>) -> Self {
         todo!()
     }
 
