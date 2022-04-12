@@ -47,7 +47,7 @@ pub struct VerifyArgs {
     )]
     chain_id: Chain,
 
-    #[clap(help = "your etherscan api key", env = "ETHERSCAN_API_KEY")]
+    #[clap(long, help = "your etherscan api key", env = "ETHERSCAN_API_KEY")]
     etherscan_key: String,
 
     #[clap(
@@ -267,7 +267,7 @@ pub struct VerifyCheckArgs {
     )]
     chain_id: Chain,
 
-    #[clap(help = "your etherscan api key", env = "ETHERSCAN_API_KEY")]
+    #[clap(long, help = "your etherscan api key", env = "ETHERSCAN_API_KEY")]
     etherscan_key: String,
 }
 
