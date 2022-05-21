@@ -1174,10 +1174,15 @@ impl Backend {
         block_hash: H256,
         index: Index,
     ) -> Option<Transaction> {
-        let block = self.blockchain.storage.read().blocks.get(&block_hash).cloned()?;
-        let index: usize = index.into();
-        let tx = block.transactions.get(index)?.clone();
-        let info = self.blockchain.storage.read().transactions.get(&tx.hash())?.info.clone();
+        let (info, block, tx) = {
+            let storage = self.blockchain.storage.read_recursive();
+            let block = storage.blocks.get(&block_hash).cloned()?;
+            let index: usize = index.into();
+            let tx = block.transactions.get(index)?.clone();
+            let info = storage.transactions.get(&tx.hash())?.info.clone();
+            (info, block, tx)
+        };
+
         Some(transaction_build(tx, Some(&block), Some(info), true, Some(self.base_fee())))
     }
 
@@ -1198,10 +1203,13 @@ impl Backend {
     }
 
     pub fn mined_transaction_by_hash(&self, hash: H256) -> Option<Transaction> {
-        let MinedTransaction { info, block_hash, .. } =
-            self.blockchain.storage.read().transactions.get(&hash)?.clone();
-
-        let block = self.blockchain.storage.read().blocks.get(&block_hash).cloned()?;
+        let (info, block) = {
+            let storage = self.blockchain.storage.read_recursive();
+            let MinedTransaction { info, block_hash, .. } =
+                storage.transactions.get(&hash)?.clone();
+            let block = storage.blocks.get(&block_hash).cloned()?;
+            (info, block)
+        };
         let tx = block.transactions.get(info.transaction_index as usize)?.clone();
 
         Some(transaction_build(tx, Some(&block), Some(info), true, Some(self.base_fee())))
