@@ -261,7 +261,7 @@ pub struct TransactionWithMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contract_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub contract_address: Option<String>,
+    pub contract_address: Option<Address>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -307,7 +307,7 @@ impl TransactionWithMetadata {
         }
 
         self.contract_name = contracts.get(&address).map(|(name, _)| name.clone());
-        self.contract_address = Some(format!("0x{:?}", address));
+        self.contract_address = Some(address);
     }
 
     fn set_call(
