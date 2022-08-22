@@ -1,6 +1,7 @@
 use crate::{
     config::{Hardfork, DEFAULT_MNEMONIC},
     eth::pool::transactions::TransactionOrder,
+    genesis::Genesis,
     AccountGenerator, NodeConfig, CHAIN_ID,
 };
 use anvil_server::ServerConfig;
@@ -16,7 +17,6 @@ use std::{
         Arc,
     },
 };
-
 use tracing::log::trace;
 
 #[derive(Clone, Debug, Parser)]
@@ -118,6 +118,14 @@ pub struct NodeArgs {
         value_name = "ORDER"
     )]
     pub order: TransactionOrder,
+
+    #[clap(
+        long,
+        help = "Initialize the genesis block with the given `genesis.json` file.",
+        value_name = "PATH",
+        value_parser = Genesis::parse
+    )]
+    pub init: Option<Genesis>,
 }
 
 impl NodeArgs {
@@ -148,6 +156,7 @@ impl NodeArgs {
             .set_config_out(self.config_out)
             .with_chain_id(self.evm_opts.chain_id)
             .with_transaction_order(self.order)
+            .with_genesis(self.init)
     }
 
     fn account_generator(&self) -> AccountGenerator {
