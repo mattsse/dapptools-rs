@@ -15,7 +15,7 @@ use foundry_config::{Chain, Config};
 
 #[derive(Debug, Parser)]
 pub struct CallArgs {
-    #[clap(help = "The destination of the transaction.", value_name = "TO")]
+    #[clap(help = "The destination of the transaction.", value_name = "TO", value_parser = foundry_common::clap_helpers::parse_name_or_address)]
     to: Option<NameOrAddress>,
 
     #[clap(help = "The signature of the function to call.", value_name = "SIG")]
@@ -153,5 +153,13 @@ mod tests {
         ]);
 
         assert!(args.is_err());
+    }
+
+    #[test]
+    fn can_parse_address() {
+        let to = Address::random();
+        let args = CallArgs::parse_from(["foundry-cli", format!("{to:?}").as_str()]);
+
+        assert_eq!(args.to, Some(NameOrAddress::Address(to)));
     }
 }

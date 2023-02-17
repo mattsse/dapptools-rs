@@ -12,7 +12,8 @@ use std::sync::Arc;
 pub struct SendTxArgs {
     #[clap(
         help = "The destination of the transaction. If not provided, you must use cast send --create.",
-        value_name = "TO"
+        value_name = "TO",
+        value_parser = foundry_common::clap_helpers::parse_name_or_address
     )]
     to: Option<NameOrAddress>,
     #[clap(help = "The signature of the function to call.", value_name = "SIG")]
@@ -279,4 +280,18 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ethers::types::Address;
+
+    #[test]
+    fn can_parse_address() {
+        let to = Address::random();
+        let args = SendTxArgs::parse_from(["foundry-cli", format!("{to:?}").as_str()]);
+
+        assert_eq!(args.to, Some(NameOrAddress::Address(to)));
+    }
 }

@@ -25,7 +25,7 @@ const MIN_SOLC: Version = Version::new(0, 6, 5);
 #[derive(Debug, Clone, Parser)]
 pub struct StorageArgs {
     // Storage
-    #[clap(help = "The contract address.", value_name = "ADDRESS")]
+    #[clap(help = "The contract address.", value_name = "ADDRESS", value_parser = foundry_common::clap_helpers::parse_name_or_address)]
     address: NameOrAddress,
     #[clap(
         help = "The storage slot number (hex or decimal)",
@@ -241,5 +241,18 @@ fn is_storage_layout_empty(storage_layout: &Option<StorageLayout>) -> bool {
         s.storage.is_empty()
     } else {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_parse_address() {
+        let to = Address::random();
+        let args = StorageArgs::parse_from(["foundry-cli", format!("{to:?}").as_str()]);
+
+        assert_eq!(args.address, NameOrAddress::Address(to));
     }
 }
