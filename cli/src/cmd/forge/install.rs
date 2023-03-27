@@ -9,7 +9,7 @@ use atty::{self, Stream};
 use clap::{Parser, ValueHint};
 use ethers::solc::Project;
 use foundry_common::fs;
-use foundry_config::{impl_figment_convert_basic, Config};
+use foundry_config::{find_git_root_path, impl_figment_convert_basic, Config};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use semver::Version;
@@ -188,9 +188,14 @@ pub(crate) fn install(
                         cmd.exec()?;
                     }
 
+                    let git_root = find_git_root_path(&root)?;
+
                     // this changed the .gitmodules files
-                    trace!("git add .gitmodules");
-                    Command::new("git").current_dir(&root).args(["add", ".gitmodules"]).exec()?;
+                    trace!(?git_root, "git add .gitmodules");
+                    Command::new("git")
+                        .current_dir(&git_root)
+                        .args(["add", ".gitmodules"])
+                        .exec()?;
                 }
             }
 
