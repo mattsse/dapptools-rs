@@ -2,7 +2,7 @@ use ethers::{
     abi::{ethereum_types::BigEndianHash, Address},
     types::{
         transaction::eip2930::{AccessList, AccessListItem},
-        H256,
+        H256, H160
     },
 };
 use hashbrown::{HashMap, HashSet};
@@ -65,7 +65,7 @@ where
                     let cur_contract = interpreter.contract.address;
                     let slot = slot.into();
                     self.access_list
-                        .entry(cur_contract.into())
+                        .entry(H160::from_slice(cur_contract.as_bytes()))
                         .or_default()
                         .insert(H256::from_uint(&slot));
                 }

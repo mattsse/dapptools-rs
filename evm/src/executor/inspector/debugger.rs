@@ -9,9 +9,9 @@ use crate::{
     CallKind,
 };
 use bytes::Bytes;
-use ethers::types::Address;
+use ethers::types::{Address, H160};
 use std::{cell::RefCell, rc::Rc};
-use revm::{EVMData, Inspector};
+use revm::{EVMData, Inspector, primitives::B160};
 use revm::inspectors::GasInspector;
 use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
 
@@ -109,10 +109,10 @@ where
     ) -> (InstructionResult, Gas, Bytes) {
         self.enter(
             data.journaled_state.depth() as usize,
-            call.context.code_address.into(),
+            H160::from_slice(call.context.code_address.as_bytes()),
             call.context.scheme.into(),
         );
-        if CHEATCODE_ADDRESS  == call.contract.into(){
+        if CHEATCODE_ADDRESS == H160::from_slice(call.contract.as_bytes()) {
             self.arena.arena[self.head].steps.push(DebugStep {
                 memory: Memory::new(),
                 instruction: Instruction::Cheatcode(
@@ -143,7 +143,7 @@ where
         &mut self,
         data: &mut EVMData<'_, DB>,
         call: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         // TODO: Does this increase gas cost?
         if let Err(err) = data.journaled_state.load_account(call.caller, data.db) {
             return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
@@ -164,10 +164,10 @@ where
         _: &mut EVMData<'_, DB>,
         _: &CreateInputs,
         status: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         gas: Gas,
         retdata: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         self.exit();
 
         (status, address, gas, retdata)

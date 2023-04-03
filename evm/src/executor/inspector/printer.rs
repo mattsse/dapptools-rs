@@ -1,8 +1,8 @@
 use bytes::Bytes;
-use ethers::types::Address;
+use revm::primitives::B160;
 use revm::{Database, EVMData, Inspector};
 use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
+use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, opcode};
 
 #[derive(Clone, Default)]
 pub struct TracePrinter {
@@ -12,7 +12,7 @@ pub struct TracePrinter {
 impl<DB: Database> Inspector<DB> for TracePrinter {
     fn initialize_interp(
         &mut self,
-        interp: &mut revm::Interpreter,
+        interp: &mut Interpreter,
         data: &mut EVMData<'_, DB>,
         is_static: bool,
     ) -> InstructionResult {
@@ -24,7 +24,7 @@ impl<DB: Database> Inspector<DB> for TracePrinter {
     // all other information can be obtained from interp.
     fn step(
         &mut self,
-        interp: &mut revm::Interpreter,
+        interp: &mut Interpreter,
         data: &mut EVMData<'_, DB>,
         is_static: bool,
     ) -> InstructionResult {
@@ -55,7 +55,7 @@ impl<DB: Database> Inspector<DB> for TracePrinter {
 
     fn step_end(
         &mut self,
-        interp: &mut revm::Interpreter,
+        interp: &mut Interpreter,
         data: &mut EVMData<'_, DB>,
         is_static: bool,
         eval: InstructionResult,
@@ -98,7 +98,7 @@ impl<DB: Database> Inspector<DB> for TracePrinter {
         &mut self,
         _data: &mut EVMData<'_, DB>,
         inputs: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         println!(
             "CREATE CALL: caller:{:?}, scheme:{:?}, value:{:?}, init_code:{:?}, gas:{:?}",
             inputs.caller,
@@ -115,11 +115,11 @@ impl<DB: Database> Inspector<DB> for TracePrinter {
         data: &mut EVMData<'_, DB>,
         inputs: &CreateInputs,
         ret: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         remaining_gas: Gas,
         out: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
-        self.gas_inspector.create_end(data, inputs, ret, address.into(), remaining_gas, out.clone());
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
+        self.gas_inspector.create_end(data, inputs, ret, address, remaining_gas, out.clone());
         (ret, address, remaining_gas, out)
     }
 }

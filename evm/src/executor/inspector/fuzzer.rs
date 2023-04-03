@@ -3,9 +3,10 @@ use crate::{
     utils,
 };
 use bytes::Bytes;
+use ethers::types::H160;
 use revm::{Database, EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CallScheme, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
+use revm::interpreter::{CallInputs, CallScheme, Gas, InstructionResult, Interpreter};
+use revm::primitives::{B160};
 
 /// An inspector that can fuzz and collect data for that effect.
 #[derive(Clone, Debug)]
@@ -98,21 +99,21 @@ impl Fuzzer {
     fn override_call(&mut self, call: &mut CallInputs) {
         if let Some(ref mut call_generator) = self.call_generator {
             // We only override external calls which are not coming from the test contract.
-            if call.context.caller != call_generator.test_address.into() &&
+            if call.context.caller != B160::from_slice(call_generator.test_address.as_bytes()) &&
                 call.context.scheme == CallScheme::Call &&
                 !call_generator.used
             {
                 // There's only a 30% chance that an override happens.
                 if let Some((sender, (contract, input))) =
-                    call_generator.next(call.context.caller.into(), call.contract.into())
+                    call_generator.next(H160::from_slice(call.context.caller.as_bytes()), H160::from_slice(call.contract.as_bytes()))
                 {
                     call.input = input.0;
-                    call.context.caller = sender.into();
-                    call.contract = contract.into();
+                    call.context.caller = B160::from_slice(sender.as_bytes());
+                    call.contract = B160::from_slice(contract.as_bytes());
 
                     // TODO: in what scenarios can the following be problematic
-                    call.context.code_address = contract.into();
-                    call.context.address = contract.into();
+                    call.context.code_address = B160::from_slice(contract.as_bytes());
+                    call.context.address = B160::from_slice(contract.as_bytes());
 
                     call_generator.used = true;
                 }
