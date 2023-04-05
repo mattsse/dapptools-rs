@@ -16,7 +16,7 @@ use proptest::prelude::{BoxedStrategy, Strategy};
 use revm::{
     db::{CacheDB, DatabaseRef},
     primitives::SpecId,
-    interpreter::{opcode, spec_opcode_gas}
+    interpreter::opcode,
 };
 use std::{
     collections::BTreeSet,
@@ -142,8 +142,8 @@ pub fn collect_state_from_call(
         if include_storage {
             // Insert storage
             for (slot, value) in &account.storage {
-                state.insert(utils::u256_to_h256_be(*slot).into());
-                state.insert(utils::u256_to_h256_be(value.present_value()).into());
+                state.insert(slot.to_be_bytes());
+                state.insert(value.present_value().to_be_bytes());
             }
         }
 

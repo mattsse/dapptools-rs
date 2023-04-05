@@ -4,7 +4,7 @@ use ethers::{
     types::{Block, Chain},
 };
 use eyre::ContextCompat;
-use revm::interpreter::{opcode, spec_opcode_gas};
+use revm::interpreter::{opcode};
 use std::collections::BTreeMap;
 use revm::primitives::SpecId;
 

@@ -2,7 +2,7 @@ use super::Cheatcodes;
 use crate::{
     abi::HEVMCalls,
     executor::backend::error::{DatabaseError, DatabaseResult},
-    utils::h256_to_u256_be,
+    utils::{h256_to_u256_be, h160_to_b160, u256_to_ru256},
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use ethers::{
@@ -54,7 +54,7 @@ pub fn configure_tx_env(env: &mut revm::primitives::Env, tx: &Transaction) {
         .unwrap_or_default()
         .0
         .into_iter()
-        .map(|item| (item.address, item.storage_keys.into_iter().map(h256_to_u256_be).collect())) // TODO after revm bump
+        .map(|item| (h160_to_b160(item.address), item.storage_keys.into_iter().map(h256_to_u256_be).map(u256_to_ru256).collect())) 
         .collect();
     env.tx.value = tx.value.into();
     env.tx.data = tx.input.0.clone();

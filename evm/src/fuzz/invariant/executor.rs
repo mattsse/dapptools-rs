@@ -556,7 +556,7 @@ fn collect_data(
 
     // Re-add changes
     if let Some(changed) = sender_changeset {
-        state_changeset.insert(*sender, changed);
+        state_changeset.insert(*sender.into(), changed);
     }
 }
 

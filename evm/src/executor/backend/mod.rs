@@ -680,7 +680,7 @@ impl Backend {
         INSP: Inspector<Self>,
     {
         self.set_caller(H160::from_slice(env.tx.caller.as_bytes()));
-        self.set_spec_id(env.cfg.spec_id); // TODO: Need to bump revm to make this not ugly
+        self.set_spec_id(SpecId::from_spec_id(env.cfg.spec_id));
 
         let test_contract = match env.tx.transact_to {
             TransactTo::Call(to) => to,
@@ -1701,7 +1701,7 @@ fn commit_transaction(
 ) {
     configure_tx_env(&mut env, &tx);
 
-    let (_, state) = {
+    let (_, state) = { // TODO: Unsure how to handle
         let mut evm = EVM::new();
         evm.env = env;
 
