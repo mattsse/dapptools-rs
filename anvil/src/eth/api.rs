@@ -507,7 +507,7 @@ impl EthApi {
         // check if the number predates the fork, if in fork mode
         if let BlockRequest::Number(number) = &block_request {
             if let Some(fork) = self.get_fork() {
-                if fork.predates_fork(number.as_u64()) {
+                if fork.predates_fork_inclusive(number.as_u64()) {
                     return Ok(fork.get_balance(address, number.as_u64()).await?)
                 }
             }
@@ -531,7 +531,7 @@ impl EthApi {
         // check if the number predates the fork, if in fork mode
         if let BlockRequest::Number(number) = &block_request {
             if let Some(fork) = self.get_fork() {
-                if fork.predates_fork(number.as_u64()) {
+                if fork.predates_fork_inclusive(number.as_u64()) {
                     return Ok(fork
                         .storage_at(address, index, Some(BlockNumber::Number(*number)))
                         .await?)
