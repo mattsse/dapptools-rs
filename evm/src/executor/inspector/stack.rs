@@ -356,7 +356,7 @@ where
         (status, address, remaining_gas, retdata)
     }
 
-    fn selfdestruct(&mut self) {
+    fn selfdestruct(&mut self, contract: B160, target: B160) {
         call_inspectors!(
             inspector,
             [
@@ -368,7 +368,7 @@ where
                 &mut self.chisel_state
             ],
             {
-                Inspector::<DB>::selfdestruct(inspector);
+                Inspector::<DB>::selfdestruct(inspector, contract, target);
             }
         );
     }

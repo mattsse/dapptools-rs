@@ -18,7 +18,7 @@ pub use in_memory_db::MemDb;
 use revm::{
     db::{CacheDB, DatabaseRef},
     precompile::{Precompiles, SpecId},
-    primitives::{Account, AccountInfo, B160, U256 as rU256, Bytecode, CreateScheme, Env, ExecutionResult, Log, TransactTo, KECCAK_EMPTY, B256},
+    primitives::{Account, AccountInfo, B160, U256 as rU256, Bytecode, CreateScheme, Env, Log, TransactTo, KECCAK_EMPTY, B256, ResultAndState},
     Database, DatabaseCommit, Inspector, JournaledState, EVM,
 };
 use std::collections::{HashMap, HashSet};
@@ -675,7 +675,7 @@ impl Backend {
         &mut self,
         env: &mut Env,
         mut inspector: INSP,
-    ) -> (ExecutionResult, Map<Address, Account>)
+    ) -> eyre::Result<ResultAndState>
     where
         INSP: Inspector<Self>,
     {
@@ -694,7 +694,7 @@ impl Backend {
         };
         self.set_test_contract(b160_to_h160(test_contract));
 
-        revm::evm_inner::<Self, true>(env, self, &mut inspector).transact()
+        Ok(revm::evm_inner::<Self, true>(env, self, &mut inspector).transact()?)
     }
 
     /// Returns true if the address is a precompile
@@ -1698,10 +1698,10 @@ fn commit_transaction(
     fork: &mut Fork,
     fork_id: &ForkId,
     cheatcodes_inspector: Option<&mut Cheatcodes>,
-) {
+) -> eyre::Result<()> {
     configure_tx_env(&mut env, &tx);
 
-    let (_, state) = { // TODO: Unsure how to handle
+    let state = { // TODO: Unsure how to handle
         let mut evm = EVM::new();
         evm.env = env;
 
@@ -1709,13 +1709,14 @@ fn commit_transaction(
         evm.database(db);
 
         if let Some(inspector) = cheatcodes_inspector {
-            evm.inspect(inspector)
+            evm.inspect(inspector)?.state
         } else {
-            evm.transact()
+            evm.transact()?.state
         }
     };
 
     apply_state_changeset(state, journaled_state, fork);
+    Ok(())
 }
 
 /// Applies the changeset of a transaction to the active journaled state and also commits it in the

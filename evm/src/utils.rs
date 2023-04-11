@@ -7,6 +7,7 @@ use eyre::ContextCompat;
 use revm::interpreter::{opcode};
 use std::collections::BTreeMap;
 use revm::primitives::SpecId;
+use revm::interpreter::spec_opcode_gas;
 
 /// Small helper function to convert [U256] into [H256].
 pub fn u256_to_h256_le(u: U256) -> H256 {
