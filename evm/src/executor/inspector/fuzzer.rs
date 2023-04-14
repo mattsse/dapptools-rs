@@ -1,11 +1,12 @@
 use crate::{
     fuzz::{invariant::RandomCallGenerator, strategies::EvmFuzzState},
-    utils,
+    utils::{self, b160_to_h160, h160_to_b160},
 };
 use bytes::Bytes;
-use revm::{Database, EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CallScheme, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
+use revm::{
+    interpreter::{CallInputs, CallScheme, Gas, InstructionResult, Interpreter},
+    Database, EVMData, Inspector,
+};
 
 /// An inspector that can fuzz and collect data for that effect.
 #[derive(Clone, Debug)]
@@ -81,7 +82,7 @@ impl Fuzzer {
         let mut state = self.fuzz_state.write();
 
         for slot in interpreter.stack().data() {
-            let slot =(*slot).into();
+            let slot = (*slot).into();
             state.insert(utils::u256_to_h256_be(slot).into());
         }
 
@@ -98,21 +99,21 @@ impl Fuzzer {
     fn override_call(&mut self, call: &mut CallInputs) {
         if let Some(ref mut call_generator) = self.call_generator {
             // We only override external calls which are not coming from the test contract.
-            if call.context.caller != call_generator.test_address.into() &&
+            if call.context.caller != h160_to_b160(call_generator.test_address) &&
                 call.context.scheme == CallScheme::Call &&
                 !call_generator.used
             {
                 // There's only a 30% chance that an override happens.
-                if let Some((sender, (contract, input))) =
-                    call_generator.next(call.context.caller.into(), call.contract.into())
+                if let Some((sender, (contract, input))) = call_generator
+                    .next(b160_to_h160(call.context.caller), b160_to_h160(call.contract))
                 {
                     call.input = input.0;
-                    call.context.caller = sender.into();
-                    call.contract = contract.into();
+                    call.context.caller = h160_to_b160(sender);
+                    call.contract = h160_to_b160(contract);
 
                     // TODO: in what scenarios can the following be problematic
-                    call.context.code_address = contract.into();
-                    call.context.address = contract.into();
+                    call.context.code_address = h160_to_b160(contract);
+                    call.context.address = h160_to_b160(contract);
 
                     call_generator.used = true;
                 }

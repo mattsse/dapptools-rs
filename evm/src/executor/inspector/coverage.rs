@@ -1,7 +1,12 @@
-use crate::coverage::{HitMap, HitMaps};
+use crate::{
+    coverage::{HitMap, HitMaps},
+    utils::b256_to_h256,
+};
 use bytes::Bytes;
-use revm::{Database, EVMData, Inspector};
-use revm::interpreter::{InstructionResult, Interpreter};
+use revm::{
+    interpreter::{InstructionResult, Interpreter},
+    Database, EVMData, Inspector,
+};
 
 #[derive(Default, Debug)]
 pub struct CoverageCollector {
@@ -19,7 +24,7 @@ where
         _: &mut EVMData<'_, DB>,
         _: bool,
     ) -> InstructionResult {
-        self.maps.entry(interpreter.contract.bytecode.hash().into()).or_insert_with(|| {
+        self.maps.entry(b256_to_h256(interpreter.contract.bytecode.hash())).or_insert_with(|| {
             HitMap::new(Bytes::copy_from_slice(
                 interpreter.contract.bytecode.original_bytecode_slice(),
             ))
@@ -35,7 +40,7 @@ where
         _is_static: bool,
     ) -> InstructionResult {
         self.maps
-            .entry(interpreter.contract.bytecode.hash().into())
+            .entry(b256_to_h256(interpreter.contract.bytecode.hash()))
             .and_modify(|map| map.hit(interpreter.program_counter()));
 
         InstructionResult::Continue

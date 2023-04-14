@@ -10,17 +10,22 @@ use crate::{
         backend::DatabaseExt, inspector::cheatcodes::env::RecordedLogs, CHEATCODE_ADDRESS,
         HARDHAT_CONSOLE_ADDRESS,
     },
+    utils::{b160_to_h160, b256_to_h256, h160_to_b160},
 };
 use bytes::Bytes;
 use ethers::{
     abi::{AbiDecode, AbiEncode, RawLog},
     signers::LocalWallet,
     types::{
-        transaction::eip2718::TypedTransaction, Address, NameOrAddress, TransactionRequest, H256,
-        U256,
+        transaction::eip2718::TypedTransaction, Address, NameOrAddress, TransactionRequest, U256,
     },
 };
 use itertools::Itertools;
+use revm::{
+    interpreter::{opcode, CallInputs, CreateInputs, Gas, InstructionResult, Interpreter},
+    primitives::{BlockEnv, TransactTo, B160, B256},
+    EVMData, Inspector,
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -30,10 +35,6 @@ use std::{
     sync::Arc,
 };
 use tracing::trace;
-use revm::{EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, Stack};
-use revm::primitives::BlockEnv;
 
 /// Cheatcodes related to the execution environment.
 mod env;
@@ -153,12 +154,12 @@ pub struct Cheatcodes {
     /// we need to copy. So we convert it to a `Some(None)` in `apply_cheatcode`, and once we have
     /// the interpreter, we copy the gas struct. Then each time there is an execution of an
     /// operation, we reset the gas.
-    pub gas_metering: Option<Option<revm::Gas>>,
+    pub gas_metering: Option<Option<revm::interpreter::Gas>>,
 
     /// Holds stored gas info for when we pause gas metering, and we're entering/inside
     /// CREATE / CREATE2 frames. This is needed to make gas meter pausing work correctly when
     /// paused and creating new contracts.
-    pub gas_metering_create: Option<Option<revm::Gas>>,
+    pub gas_metering_create: Option<Option<revm::interpreter::Gas>>,
 }
 
 impl Cheatcodes {
@@ -217,7 +218,9 @@ impl Cheatcodes {
             .unwrap_or_default();
         let created_address = get_create_address(inputs, old_nonce);
 
-        if data.journaled_state.depth > 1 && !data.db.has_cheatcode_access(inputs.caller.into()) {
+        if data.journaled_state.depth > 1 &&
+            !data.db.has_cheatcode_access(b160_to_h160(inputs.caller))
+        {
             // we only grant cheat code access for new contracts if the caller also has
             // cheatcode access and the new contract is created in top most call
             return
@@ -247,7 +250,7 @@ impl Cheatcodes {
         // This will prevent overflow issues in revm's [`JournaledState::journal_revert`] routine
         // which rolls back any transfers.
         while let Some(record) = self.eth_deals.pop() {
-            if let Some(acc) = data.journaled_state.state.get_mut(&record.address) {
+            if let Some(acc) = data.journaled_state.state.get_mut(&h160_to_b160(record.address)) {
                 acc.info.balance = record.old_balance.into();
             }
         }
@@ -276,7 +279,12 @@ where
         InstructionResult::Continue
     }
 
-    fn step(&mut self, interpreter: &mut Interpreter, _: &mut EVMData<'_, DB>, _: bool) -> InstructionResult {
+    fn step(
+        &mut self,
+        interpreter: &mut Interpreter,
+        _: &mut EVMData<'_, DB>,
+        _: bool,
+    ) -> InstructionResult {
         // reset gas if gas metering is turned off
         match self.gas_metering {
             Some(None) => {
@@ -299,7 +307,7 @@ where
                         // could just do this there instead.
                         match self.gas_metering_create {
                             None | Some(None) => {
-                                interpreter.gas = revm::Gas::new(0);
+                                interpreter.gas = revm::interpreter::Gas::new(0);
                             }
                             Some(Some(gas)) => {
                                 // If this was CREATE frame, set correct gas limit. This is needed
@@ -313,7 +321,7 @@ where
                                 // used, and erases costs by `remaining` gas post-create.
                                 // gas used ref: https://github.com/bluealloy/revm/blob/2cb991091d32330cfe085320891737186947ce5a/crates/revm/src/instructions/host.rs#L254-L258
                                 // post-create erase ref: https://github.com/bluealloy/revm/blob/2cb991091d32330cfe085320891737186947ce5a/crates/revm/src/instructions/host.rs#L279
-                                interpreter.gas = revm::Gas::new(gas.limit());
+                                interpreter.gas = revm::interpreter::Gas::new(gas.limit());
 
                                 // reset CREATE gas metering because we're about to exit its frame
                                 self.gas_metering_create = None
@@ -341,7 +349,7 @@ where
                     let key = try_or_continue!(interpreter.stack().peek(0));
                     storage_accesses
                         .reads
-                        .entry(interpreter.contract().address.into())
+                        .entry(b160_to_h160(interpreter.contract().address))
                         .or_insert_with(Vec::new)
                         .push(key.into());
                 }
@@ -351,12 +359,12 @@ where
                     // An SSTORE does an SLOAD internally
                     storage_accesses
                         .reads
-                        .entry(interpreter.contract().address.into())
+                        .entry(b160_to_h160(interpreter.contract().address))
                         .or_insert_with(Vec::new)
-                        .push(key);
+                        .push(key.into());
                     storage_accesses
                         .writes
-                        .entry(interpreter.contract().address.into())
+                        .entry(b160_to_h160(interpreter.contract().address))
                         .or_insert_with(Vec::new)
                         .push(key.into());
                 }
@@ -367,21 +375,35 @@ where
         InstructionResult::Continue
     }
 
-    fn log(&mut self, _: &mut EVMData<'_, DB>, address: &Address, topics: &[H256], data: &Bytes) {
+    fn log(&mut self, _: &mut EVMData<'_, DB>, address: &B160, topics: &[B256], data: &Bytes) {
         // Match logs if `expectEmit` has been called
         if !self.expected_emits.is_empty() {
             handle_expect_emit(
                 self,
-                RawLog { topics: topics.to_vec(), data: data.to_vec() },
-                address,
+                RawLog {
+                    topics: topics
+                        .to_vec()
+                        .into_iter()
+                        .map(|topic| b256_to_h256(topic))
+                        .collect_vec(),
+                    data: data.to_vec(),
+                },
+                &b160_to_h160(*address),
             );
         }
 
         // Stores this log if `recordLogs` has been called
         if let Some(storage_recorded_logs) = &mut self.recorded_logs {
             storage_recorded_logs.entries.push(Log {
-                emitter: *address,
-                inner: RawLog { topics: topics.to_vec(), data: data.to_vec() },
+                emitter: b160_to_h160(*address),
+                inner: RawLog {
+                    topics: topics
+                        .to_vec()
+                        .into_iter()
+                        .map(|topic| b256_to_h256(topic))
+                        .collect_vec(),
+                    data: data.to_vec(),
+                },
             });
         }
     }
@@ -392,18 +414,18 @@ where
         call: &mut CallInputs,
         is_static: bool,
     ) -> (InstructionResult, Gas, Bytes) {
-        if call.contract == CHEATCODE_ADDRESS.into() {
-            match self.apply_cheatcode(data, call.context.caller.into(), call) {
+        if call.contract == h160_to_b160(CHEATCODE_ADDRESS) {
+            match self.apply_cheatcode(data, b160_to_h160(call.context.caller), call) {
                 Ok(retdata) => (InstructionResult::Return, Gas::new(call.gas_limit), retdata),
                 Err(err) => (InstructionResult::Revert, Gas::new(call.gas_limit), err),
             }
-        } else if call.contract != HARDHAT_CONSOLE_ADDRESS.into() {
+        } else if call.contract != h160_to_b160(HARDHAT_CONSOLE_ADDRESS) {
             // Handle expected calls
-            if let Some(expecteds) = self.expected_calls.get_mut(&(call.contract.into())) {
+            if let Some(expecteds) = self.expected_calls.get_mut(&(b160_to_h160(call.contract))) {
                 if let Some(found_match) = expecteds.iter().position(|expected| {
                     expected.calldata.len() <= call.input.len() &&
                         expected.calldata == call.input[..expected.calldata.len()] &&
-                        expected.value.map_or(true, |value| value == call.transfer.value) &&
+                        expected.value.map_or(true, |value| value == call.transfer.value.into()) &&
                         expected.gas.map_or(true, |gas| gas == call.gas_limit) &&
                         expected.min_gas.map_or(true, |min_gas| min_gas <= call.gas_limit)
                 }) {
@@ -412,36 +434,46 @@ where
             }
 
             // Handle mocked calls
-            if let Some(mocks) = self.mocked_calls.get(&call.contract) {
+            if let Some(mocks) = self.mocked_calls.get(&b160_to_h160(call.contract)) {
                 let ctx = MockCallDataContext {
                     calldata: call.input.clone(),
-                    value: Some(call.transfer.value),
+                    value: Some(call.transfer.value.into()),
                 };
                 if let Some(mock_retdata) = mocks.get(&ctx) {
-                    return (InstructionResult::Return, Gas::new(call.gas_limit), mock_retdata.clone())
+                    return (
+                        InstructionResult::Return,
+                        Gas::new(call.gas_limit),
+                        mock_retdata.clone(),
+                    )
                 } else if let Some((_, mock_retdata)) = mocks.iter().find(|(mock, _)| {
                     mock.calldata.len() <= call.input.len() &&
                         *mock.calldata == call.input[..mock.calldata.len()] &&
-                        mock.value.map(|value| value == call.transfer.value).unwrap_or(true)
+                        mock.value
+                            .map(|value| value == call.transfer.value.into())
+                            .unwrap_or(true)
                 }) {
-                    return (InstructionResult::Return, Gas::new(call.gas_limit), mock_retdata.clone())
+                    return (
+                        InstructionResult::Return,
+                        Gas::new(call.gas_limit),
+                        mock_retdata.clone(),
+                    )
                 }
             }
 
             // Apply our prank
             if let Some(prank) = &self.prank {
                 if data.journaled_state.depth() >= prank.depth &&
-                    call.context.caller == prank.prank_caller
+                    call.context.caller == h160_to_b160(prank.prank_caller)
                 {
                     // At the target depth we set `msg.sender`
                     if data.journaled_state.depth() == prank.depth {
-                        call.context.caller = prank.new_caller;
-                        call.transfer.source = prank.new_caller;
+                        call.context.caller = h160_to_b160(prank.new_caller);
+                        call.transfer.source = h160_to_b160(prank.new_caller);
                     }
 
                     // At the target depth, or deeper, we set `tx.origin`
                     if let Some(new_origin) = prank.new_origin {
-                        data.env.tx.caller = new_origin;
+                        data.env.tx.caller = h160_to_b160(new_origin);
                     }
                 }
             }
@@ -453,35 +485,43 @@ where
                 // We do this because any subsequent contract calls *must* exist on chain and
                 // we only want to grab *this* call, not internal ones
                 if data.journaled_state.depth() == broadcast.depth &&
-                    call.context.caller == broadcast.original_caller
+                    call.context.caller == h160_to_b160(broadcast.original_caller)
                 {
                     // At the target depth we set `msg.sender` & tx.origin.
                     // We are simulating the caller as being an EOA, so *both* must be set to the
                     // broadcast.origin.
-                    data.env.tx.caller = broadcast.new_origin;
+                    data.env.tx.caller = h160_to_b160(broadcast.new_origin);
 
-                    call.context.caller = broadcast.new_origin;
-                    call.transfer.source = broadcast.new_origin;
+                    call.context.caller = h160_to_b160(broadcast.new_origin);
+                    call.transfer.source = h160_to_b160(broadcast.new_origin);
                     // Add a `legacy` transaction to the VecDeque. We use a legacy transaction here
                     // because we only need the from, to, value, and data. We can later change this
                     // into 1559, in the cli package, relatively easily once we
                     // know the target chain supports EIP-1559.
                     if !is_static {
-                        if let Err(err) =
-                            data.journaled_state.load_account(broadcast.new_origin, data.db)
+                        if let Err(err) = data
+                            .journaled_state
+                            .load_account(h160_to_b160(broadcast.new_origin), data.db)
                         {
-                            return (InstructionResult::Revert, Gas::new(call.gas_limit), err.encode_string())
+                            return (
+                                InstructionResult::Revert,
+                                Gas::new(call.gas_limit),
+                                err.encode_string(),
+                            )
                         }
 
-                        let account =
-                            data.journaled_state.state().get_mut(&broadcast.new_origin).unwrap();
+                        let account = data
+                            .journaled_state
+                            .state()
+                            .get_mut(&h160_to_b160(broadcast.new_origin))
+                            .unwrap();
 
                         self.broadcastable_transactions.push_back(BroadcastableTransaction {
                             rpc: data.db.active_fork_url(),
                             transaction: TypedTransaction::Legacy(TransactionRequest {
                                 from: Some(broadcast.new_origin),
-                                to: Some(NameOrAddress::Address(call.contract)),
-                                value: Some(call.transfer.value),
+                                to: Some(NameOrAddress::Address(b160_to_h160(call.contract))),
+                                value: Some(call.transfer.value.into()),
                                 data: Some(call.input.clone().into()),
                                 nonce: Some(account.info.nonce.into()),
                                 ..Default::default()
@@ -518,14 +558,16 @@ where
         retdata: Bytes,
         _: bool,
     ) -> (InstructionResult, Gas, Bytes) {
-        if call.contract == CHEATCODE_ADDRESS || call.contract == HARDHAT_CONSOLE_ADDRESS {
+        if call.contract == h160_to_b160(CHEATCODE_ADDRESS) ||
+            call.contract == h160_to_b160(HARDHAT_CONSOLE_ADDRESS)
+        {
             return (status, remaining_gas, retdata)
         }
 
         // Clean up pranks
         if let Some(prank) = &self.prank {
             if data.journaled_state.depth() == prank.depth {
-                data.env.tx.caller = prank.prank_origin;
+                data.env.tx.caller = h160_to_b160(prank.prank_origin);
             }
             if prank.single_call {
                 std::mem::take(&mut self.prank);
@@ -535,7 +577,7 @@ where
         // Clean up broadcast
         if let Some(broadcast) = &self.broadcast {
             if data.journaled_state.depth() == broadcast.depth {
-                data.env.tx.caller = broadcast.original_origin;
+                data.env.tx.caller = h160_to_b160(broadcast.original_origin);
             }
 
             if broadcast.single_call {
@@ -635,10 +677,12 @@ where
         if let TransactTo::Call(test_contract) = data.env.tx.transact_to {
             // if a call to a different contract than the original test contract returned with
             // `Stop` we check if the contract actually exists on the active fork
-            if data.db.is_forked_mode() && status == InstructionResult::Stop && call.contract != test_contract
+            if data.db.is_forked_mode() &&
+                status == InstructionResult::Stop &&
+                call.contract != test_contract
             {
                 self.fork_revert_diagnostic =
-                    data.db.diagnose_revert(call.contract, &data.journaled_state);
+                    data.db.diagnose_revert(b160_to_h160(call.contract), &data.journaled_state);
             }
         }
 
@@ -649,21 +693,23 @@ where
         &mut self,
         data: &mut EVMData<'_, DB>,
         call: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         // allow cheatcodes from the address of the new contract
         self.allow_cheatcodes_on_create(data, call);
 
         // Apply our prank
         if let Some(prank) = &self.prank {
-            if data.journaled_state.depth() >= prank.depth && call.caller == prank.prank_caller {
+            if data.journaled_state.depth() >= prank.depth &&
+                call.caller == h160_to_b160(prank.prank_caller)
+            {
                 // At the target depth we set `msg.sender`
                 if data.journaled_state.depth() == prank.depth {
-                    call.caller = prank.new_caller;
+                    call.caller = h160_to_b160(prank.new_caller);
                 }
 
                 // At the target depth, or deeper, we set `tx.origin`
                 if let Some(new_origin) = prank.new_origin {
-                    data.env.tx.caller = new_origin;
+                    data.env.tx.caller = h160_to_b160(new_origin);
                 }
             }
         }
@@ -671,13 +717,20 @@ where
         // Apply our broadcast
         if let Some(broadcast) = &self.broadcast {
             if data.journaled_state.depth() == broadcast.depth &&
-                call.caller == broadcast.original_caller
+                call.caller == h160_to_b160(broadcast.original_caller)
             {
-                if let Err(err) = data.journaled_state.load_account(broadcast.new_origin, data.db) {
-                    return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
+                if let Err(err) =
+                    data.journaled_state.load_account(h160_to_b160(broadcast.new_origin), data.db)
+                {
+                    return (
+                        InstructionResult::Revert,
+                        None,
+                        Gas::new(call.gas_limit),
+                        err.encode_string(),
+                    )
                 }
 
-                data.env.tx.caller = broadcast.new_origin;
+                data.env.tx.caller = h160_to_b160(broadcast.new_origin);
 
                 let (bytecode, to, nonce) = match process_create(
                     broadcast.new_origin,
@@ -687,7 +740,12 @@ where
                 ) {
                     Ok(val) => val,
                     Err(err) => {
-                        return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
+                        return (
+                            InstructionResult::Revert,
+                            None,
+                            Gas::new(call.gas_limit),
+                            err.encode_string(),
+                        )
                     }
                 };
 
@@ -696,7 +754,7 @@ where
                     transaction: TypedTransaction::Legacy(TransactionRequest {
                         from: Some(broadcast.new_origin),
                         to,
-                        value: Some(call.value),
+                        value: Some(call.value.into()),
                         data: Some(bytecode.into()),
                         nonce: Some(nonce.into()),
                         ..Default::default()
@@ -713,14 +771,14 @@ where
         data: &mut EVMData<'_, DB>,
         _: &CreateInputs,
         status: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         remaining_gas: Gas,
         retdata: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         // Clean up pranks
         if let Some(prank) = &self.prank {
             if data.journaled_state.depth() == prank.depth {
-                data.env.tx.caller = prank.prank_origin;
+                data.env.tx.caller = h160_to_b160(prank.prank_origin);
             }
             if prank.single_call {
                 std::mem::take(&mut self.prank);
@@ -730,7 +788,7 @@ where
         // Clean up broadcasts
         if let Some(broadcast) = &self.broadcast {
             if data.journaled_state.depth() == broadcast.depth {
-                data.env.tx.caller = broadcast.original_origin;
+                data.env.tx.caller = h160_to_b160(broadcast.original_origin);
             }
 
             if broadcast.single_call {
@@ -749,7 +807,12 @@ where
                     retdata,
                 ) {
                     Err(retdata) => (InstructionResult::Revert, None, remaining_gas, retdata),
-                    Ok((address, retdata)) => (InstructionResult::Return, address, remaining_gas, retdata),
+                    Ok((address, retdata)) => (
+                        InstructionResult::Return,
+                        address.map(h160_to_b160),
+                        remaining_gas,
+                        retdata,
+                    ),
                 }
             }
         }

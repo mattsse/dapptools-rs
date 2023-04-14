@@ -1,15 +1,18 @@
-use crate::executor::{
-    patch_hardhat_console_selector, HardhatConsoleCalls, HARDHAT_CONSOLE_ADDRESS,
+use crate::{
+    executor::{patch_hardhat_console_selector, HardhatConsoleCalls, HARDHAT_CONSOLE_ADDRESS},
+    utils::{b160_to_h160, b256_to_h256, h160_to_b160},
 };
 use bytes::Bytes;
 use ethers::{
     abi::{AbiDecode, Token},
-    types::{Address, Log, H256},
+    types::{Log, H256},
 };
 use foundry_macros::ConsoleFmt;
-use revm::{Database, EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
+use revm::{
+    interpreter::{CallInputs, Gas, InstructionResult},
+    primitives::{B160, B256},
+    Database, EVMData, Inspector,
+};
 
 /// An inspector that collects logs during execution.
 ///
@@ -44,10 +47,10 @@ impl<DB> Inspector<DB> for LogCollector
 where
     DB: Database,
 {
-    fn log(&mut self, _: &mut EVMData<'_, DB>, address: &Address, topics: &[H256], data: &Bytes) {
+    fn log(&mut self, _: &mut EVMData<'_, DB>, address: &B160, topics: &[B256], data: &Bytes) {
         self.logs.push(Log {
-            address: *address,
-            topics: topics.to_vec(),
+            address: b160_to_h160(*address),
+            topics: topics.to_vec().into_iter().map(b256_to_h256).collect(),
             data: data.clone().into(),
             ..Default::default()
         });
@@ -59,7 +62,7 @@ where
         call: &mut CallInputs,
         _: bool,
     ) -> (InstructionResult, Gas, Bytes) {
-        if call.contract == HARDHAT_CONSOLE_ADDRESS.into() {
+        if call.contract == h160_to_b160(HARDHAT_CONSOLE_ADDRESS) {
             let (status, reason) = self.hardhat_log(call.input.to_vec());
             (status, Gas::new(call.gas_limit), reason)
         } else {

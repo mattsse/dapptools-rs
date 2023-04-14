@@ -6,14 +6,21 @@ use crate::{
         inspector::utils::{gas_used, get_create_address},
         CHEATCODE_ADDRESS,
     },
+    utils::b160_to_h160,
     CallKind,
 };
 use bytes::Bytes;
 use ethers::types::Address;
+use revm::{
+    inspectors::GasInspector,
+    interpreter::{
+        opcode::{self, spec_opcode_gas},
+        CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory,
+    },
+    primitives::B160,
+    EVMData, Inspector,
+};
 use std::{cell::RefCell, rc::Rc};
-use revm::{EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, spec_opcode_gas};
 
 /// An inspector that collects debug nodes on every step of the interpreter.
 #[derive(Debug)]
@@ -91,7 +98,7 @@ where
 
         self.arena.arena[self.head].steps.push(DebugStep {
             pc,
-            stack: interpreter.stack().data().iter().copied().map(|d|d.into()).collect(),
+            stack: interpreter.stack().data().iter().copied().map(|d| d.into()).collect(),
             memory: interpreter.memory.clone(),
             instruction: Instruction::OpCode(op),
             push_bytes,
@@ -109,10 +116,10 @@ where
     ) -> (InstructionResult, Gas, Bytes) {
         self.enter(
             data.journaled_state.depth() as usize,
-            call.context.code_address.into(),
+            b160_to_h160(call.context.code_address),
             call.context.scheme.into(),
         );
-        if CHEATCODE_ADDRESS  == call.contract.into(){
+        if CHEATCODE_ADDRESS == b160_to_h160(call.contract) {
             self.arena.arena[self.head].steps.push(DebugStep {
                 memory: Memory::new(),
                 instruction: Instruction::Cheatcode(
@@ -143,7 +150,7 @@ where
         &mut self,
         data: &mut EVMData<'_, DB>,
         call: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         // TODO: Does this increase gas cost?
         if let Err(err) = data.journaled_state.load_account(call.caller, data.db) {
             return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
@@ -164,10 +171,10 @@ where
         _: &mut EVMData<'_, DB>,
         _: &CreateInputs,
         status: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         gas: Gas,
         retdata: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         self.exit();
 
         (status, address, gas, retdata)

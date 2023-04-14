@@ -1,8 +1,8 @@
 use crate::{abi::HEVM_ABI, CallKind};
 use ethers::types::{Address, U256};
+use revm::interpreter::{Memory, OpCode};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use revm::interpreter::{Memory, OpCode};
 
 /// An arena of [DebugNode]s
 #[derive(Default, Debug, Clone)]
@@ -133,7 +133,7 @@ impl Default for DebugStep {
         Self {
             stack: vec![],
             memory: Memory::new(),
-            instruction: Instruction::OpCode(revm::opcode::INVALID),
+            instruction: Instruction::OpCode(revm::interpreter::opcode::INVALID),
             push_bytes: None,
             pc: 0,
             total_gas_used: 0,

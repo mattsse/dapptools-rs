@@ -6,8 +6,12 @@ use ethers::{
     },
 };
 use hashbrown::{HashMap, HashSet};
-use revm::{Database, EVMData, Inspector};
-use revm::interpreter::{InstructionResult, Interpreter, opcode};
+use revm::{
+    interpreter::{opcode, InstructionResult, Interpreter},
+    Database, EVMData, Inspector,
+};
+
+use crate::utils::b160_to_h160;
 
 /// An inspector that collects touched accounts and storage slots.
 #[derive(Default, Debug)]
@@ -65,7 +69,7 @@ where
                     let cur_contract = interpreter.contract.address;
                     let slot = slot.into();
                     self.access_list
-                        .entry(cur_contract.into())
+                        .entry(b160_to_h160(cur_contract))
                         .or_default()
                         .insert(H256::from_uint(&slot));
                 }

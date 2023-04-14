@@ -12,7 +12,7 @@ use ethers::{
 use foundry_common::{abi::format_token, SELECTOR_LEN};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-use revm::interpreter::{InstructionResult, return_ok};
+use revm::interpreter::{return_ok, InstructionResult};
 
 /// Decode a set of logs, only returning logs from DSTest logging events and Hardhat's `console.log`
 pub fn decode_console_logs(logs: &[Log]) -> Vec<String> {
@@ -168,11 +168,8 @@ pub fn decode_revert(
                         // if we don't decode, don't return an error, try to decode as a
                         // string later
                         if let Ok(decoded) = abi_error.decode(&err[SELECTOR_LEN..]) {
-                            let inputs = decoded
-                                .iter()
-                                .map(format_token)
-                                .collect::<Vec<_>>()
-                                .join(", ");
+                            let inputs =
+                                decoded.iter().map(format_token).collect::<Vec<_>>().join(", ");
                             return Ok(format!("{}({inputs})", abi_error.name))
                         }
                     }

@@ -3,8 +3,9 @@
 //! The design is similar to the single `SharedBackend`, `BackendHandler` but supports multiple
 //! concurrently active pairs at once.
 
-use crate::executor::fork::{
-    BackendHandler, BlockchainDb, BlockchainDbMeta, CreateFork, SharedBackend,
+use crate::{
+    executor::fork::{BackendHandler, BlockchainDb, BlockchainDbMeta, CreateFork, SharedBackend},
+    utils::ru256_to_u256,
 };
 use ethers::{
     abi::{AbiDecode, AbiEncode, AbiError},
@@ -19,7 +20,7 @@ use futures::{
     task::{Context, Poll},
     Future, FutureExt, StreamExt,
 };
-use revm::Env;
+use revm::primitives::Env;
 use std::{
     collections::HashMap,
     fmt,
@@ -490,11 +491,11 @@ async fn create_fork(
     fork.env = fork.evm_opts.fork_evm_env(&fork.url).await?;
 
     let meta = BlockchainDbMeta::new(fork.env.clone(), fork.url.clone());
-    let number = meta.block_env.number.as_u64();
+    let number = ru256_to_u256(meta.block_env.number).as_u64();
 
     // determine the cache path if caching is enabled
     let cache_path = if fork.enable_caching {
-        Config::foundry_block_cache_dir(meta.cfg_env.chain_id.as_u64(), number)
+        Config::foundry_block_cache_dir(ru256_to_u256(meta.cfg_env.chain_id).as_u64(), number)
     } else {
         None
     };

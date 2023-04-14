@@ -2,7 +2,7 @@ use super::fuzz_param_from_state;
 use crate::{
     executor::StateChangeset,
     fuzz::invariant::{ArtifactFilters, FuzzRunIdentifiedContracts},
-    utils::{self},
+    utils::{self, b160_to_h160},
 };
 use bytes::Bytes;
 use ethers::{
@@ -15,8 +15,8 @@ use parking_lot::RwLock;
 use proptest::prelude::{BoxedStrategy, Strategy};
 use revm::{
     db::{CacheDB, DatabaseRef},
+    interpreter::opcode::{self, spec_opcode_gas},
     primitives::SpecId,
-    interpreter::{opcode, spec_opcode_gas}
 };
 use std::{
     collections::BTreeSet,
@@ -89,7 +89,7 @@ pub fn build_initial_state<DB: DatabaseRef>(
     let mut state = FuzzDictionary::default();
 
     for (address, account) in db.accounts.iter() {
-        let address : Address = (*address).into();
+        let address: Address = (*address).into();
         // Insert basic account information
         state.insert(H256::from(address).into());
 
@@ -107,8 +107,8 @@ pub fn build_initial_state<DB: DatabaseRef>(
         if include_storage {
             // Insert storage
             for (slot, value) in &account.storage {
-                let slot  = (*slot).into();
-                let value  = (*value).into();
+                let slot = (*slot).into();
+                let value = (*value).into();
                 state.insert(utils::u256_to_h256_be(slot).into());
                 state.insert(utils::u256_to_h256_be(value).into());
             }
@@ -137,21 +137,21 @@ pub fn collect_state_from_call(
 
     for (address, account) in state_changeset {
         // Insert basic account information
-        state.insert(H256::from(*address).into());
+        state.insert(H256::from(b160_to_h160(*address)).into());
 
         if include_storage {
             // Insert storage
             for (slot, value) in &account.storage {
-                state.insert(utils::u256_to_h256_be(*slot).into());
-                state.insert(utils::u256_to_h256_be(value.present_value()).into());
+                state.insert(slot.to_be_bytes());
+                state.insert(value.present_value().to_be_bytes());
             }
         }
 
         if include_push_bytes {
             // Insert push bytes
             if let Some(code) = &account.info.code {
-                if !state.cache.contains(address) {
-                    state.cache.insert(*address);
+                if !state.cache.contains(&b160_to_h160(*address)) {
+                    state.cache.insert(b160_to_h160(*address));
 
                     for push_byte in collect_push_bytes(code.bytes().clone()) {
                         state.insert(push_byte);
@@ -227,7 +227,7 @@ pub fn collect_created_contracts(
     let mut writable_targeted = targeted_contracts.lock();
 
     for (address, account) in state_changeset {
-        if !setup_contracts.contains_key(address) {
+        if !setup_contracts.contains_key(&b160_to_h160(*address)) {
             if let (true, Some(code)) = (&account.is_touched, &account.info.code) {
                 if !code.is_empty() {
                     if let Some((artifact, (abi, _))) = project_contracts.find_by_code(code.bytes())
@@ -235,9 +235,11 @@ pub fn collect_created_contracts(
                         if let Some(functions) =
                             artifact_filters.get_targeted_functions(artifact, abi)?
                         {
-                            created_contracts.push(*address);
-                            writable_targeted
-                                .insert(*address, (artifact.name.clone(), abi.clone(), functions));
+                            created_contracts.push(b160_to_h160(*address));
+                            writable_targeted.insert(
+                                b160_to_h160(*address),
+                                (artifact.name.clone(), abi.clone(), functions),
+                            );
                         }
                     }
                 }

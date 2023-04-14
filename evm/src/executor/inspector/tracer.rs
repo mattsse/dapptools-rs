@@ -5,16 +5,23 @@ use crate::{
         CallTrace, CallTraceArena, CallTraceStep, LogCallOrder, RawOrDecodedCall, RawOrDecodedLog,
         RawOrDecodedReturnData,
     },
+    utils::{b160_to_h160, b256_to_h256},
     CallKind,
 };
 use bytes::Bytes;
 use ethers::{
     abi::RawLog,
-    types::{Address, H256, U256},
+    types::{Address, U256},
 };
-use revm::{Database, EVMData, Inspector, JournalEntry};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CallScheme, CreateInputs, Gas, InstructionResult, Interpreter, Memory, opcode, Stack};
+use revm::{
+    inspectors::GasInspector,
+    interpreter::{
+        opcode, return_ok, CallInputs, CallScheme, CreateInputs, Gas, InstructionResult,
+        Interpreter,
+    },
+    primitives::{B160, B256},
+    Database, EVMData, Inspector, JournalEntry,
+};
 use std::{cell::RefCell, rc::Rc};
 
 /// An inspector that collects call traces.
@@ -64,7 +71,13 @@ impl Tracer {
         ));
     }
 
-    fn fill_trace(&mut self, status: InstructionResult, cost: u64, output: Vec<u8>, address: Option<Address>) {
+    fn fill_trace(
+        &mut self,
+        status: InstructionResult,
+        cost: u64,
+        output: Vec<u8>,
+        address: Option<Address>,
+    ) {
         let success = matches!(status, return_ok!());
         let trace = &mut self.traces.arena
             [self.trace_stack.pop().expect("more traces were filled than started")]
@@ -92,7 +105,7 @@ impl Tracer {
             depth: data.journaled_state.depth(),
             pc,
             op: OpCode(interp.contract.bytecode.bytecode()[pc]),
-            contract: interp.contract.address.into(),
+            contract: b160_to_h160(interp.contract.address),
             stack: interp.stack.clone(),
             memory: interp.memory.clone(),
             gas: self.gas_inspector.borrow().gas_remaining(),
@@ -127,7 +140,7 @@ impl Tracer {
             step.state_diff = match (op, journal_entry) {
                 (
                     opcode::SLOAD | opcode::SSTORE,
-                    Some(JournalEntry::StorageChage { address, key, .. }),
+                    Some(JournalEntry::StorageChange { address, key, .. }),
                 ) => {
                     let value = data.journaled_state.state[address].storage[key].present_value();
                     let key = (*key).into();
@@ -165,11 +178,11 @@ where
         InstructionResult::Continue
     }
 
-    fn log(&mut self, _: &mut EVMData<'_, DB>, _: &Address, topics: &[H256], data: &Bytes) {
+    fn log(&mut self, _: &mut EVMData<'_, DB>, _: &B160, topics: &[B256], data: &Bytes) {
         let node = &mut self.traces.arena[*self.trace_stack.last().expect("no ongoing trace")];
+        let topics: Vec<_> = topics.to_vec().into_iter().map(b256_to_h256).collect();
         node.ordering.push(LogCallOrder::Log(node.logs.len()));
-        node.logs
-            .push(RawOrDecodedLog::Raw(RawLog { topics: topics.to_vec(), data: data.to_vec() }));
+        node.logs.push(RawOrDecodedLog::Raw(RawLog { topics, data: data.to_vec() }));
     }
 
     fn step_end(
@@ -203,11 +216,11 @@ where
 
         self.start_trace(
             data.journaled_state.depth() as usize,
-            to.into(),
+            b160_to_h160(to),
             inputs.input.to_vec(),
             inputs.transfer.value.into(),
             inputs.context.scheme.into(),
-            from.into(),
+            b160_to_h160(from),
         );
 
         (InstructionResult::Continue, Gas::new(inputs.gas_limit), Bytes::new())
@@ -236,7 +249,7 @@ where
         &mut self,
         data: &mut EVMData<'_, DB>,
         inputs: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         // TODO: Does this increase gas cost?
         let _ = data.journaled_state.load_account(inputs.caller, data.db);
         let nonce = data.journaled_state.account(inputs.caller).info.nonce;
@@ -246,7 +259,7 @@ where
             inputs.init_code.to_vec(),
             inputs.value.into(),
             inputs.scheme.into(),
-            inputs.caller.into(),
+            b160_to_h160(inputs.caller),
         );
 
         (InstructionResult::Continue, None, Gas::new(inputs.gas_limit), Bytes::new())
@@ -257,10 +270,10 @@ where
         data: &mut EVMData<'_, DB>,
         _inputs: &CreateInputs,
         status: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         gas: Gas,
         retdata: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         let code = match address {
             Some(address) => data
                 .journaled_state
@@ -275,7 +288,7 @@ where
             status,
             gas_used(data.env.cfg.spec_id, gas.spend(), gas.refunded() as u64),
             code,
-            address,
+            address.map(b160_to_h160),
         );
 
         (status, address, gas, retdata)

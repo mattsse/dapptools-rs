@@ -8,12 +8,17 @@ use crate::{
 use bytes::Bytes;
 use ethers::{
     signers::LocalWallet,
-    types::{Address, Log, H256},
+    types::{Address, Log},
+};
+use revm::{
+    inspectors::GasInspector,
+    interpreter::{
+        return_revert, CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, Stack,
+    },
+    primitives::{B160, B256},
+    EVMData, Inspector,
 };
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
-use revm::{EVMData, Inspector};
-use revm::inspectors::GasInspector;
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, Memory, Stack};
 
 /// Helper macro to call the same method on multiple inspectors without resorting to dynamic
 /// dispatch
@@ -41,8 +46,8 @@ pub struct InspectorData {
 
 /// An inspector that calls multiple inspectors in sequence.
 ///
-/// If a call to an inspector returns a value other than [InstructionResult::Continue] (or equivalent) the
-/// remaining inspectors are not called.
+/// If a call to an inspector returns a value other than [InstructionResult::Continue] (or
+/// equivalent) the remaining inspectors are not called.
 #[derive(Default)]
 pub struct InspectorStack {
     pub tracer: Option<Tracer>,
@@ -111,7 +116,8 @@ impl InspectorStack {
 
                 // If the inspector returns a different status or a revert with a non-empty message,
                 // we assume it wants to tell us something
-                if new_status != status || (new_status == InstructionResult::Revert && new_retdata != retdata)
+                if new_status != status ||
+                    (new_status == InstructionResult::Revert && new_retdata != retdata)
                 {
                     return (new_status, new_gas, new_retdata)
                 }
@@ -190,8 +196,8 @@ where
     fn log(
         &mut self,
         evm_data: &mut EVMData<'_, DB>,
-        address: &Address,
-        topics: &[H256],
+        address: &B160,
+        topics: &[B256],
         data: &Bytes,
     ) {
         call_inspectors!(
@@ -292,7 +298,7 @@ where
         &mut self,
         data: &mut EVMData<'_, DB>,
         call: &mut CreateInputs,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         call_inspectors!(
             inspector,
             [
@@ -322,10 +328,10 @@ where
         data: &mut EVMData<'_, DB>,
         call: &CreateInputs,
         status: InstructionResult,
-        address: Option<Address>,
+        address: Option<B160>,
         remaining_gas: Gas,
         retdata: Bytes,
-    ) -> (InstructionResult, Option<Address>, Gas, Bytes) {
+    ) -> (InstructionResult, Option<B160>, Gas, Bytes) {
         call_inspectors!(
             inspector,
             [
@@ -356,7 +362,7 @@ where
         (status, address, remaining_gas, retdata)
     }
 
-    fn selfdestruct(&mut self) {
+    fn selfdestruct(&mut self, contract: B160, target: B160) {
         call_inspectors!(
             inspector,
             [
@@ -368,7 +374,7 @@ where
                 &mut self.chisel_state
             ],
             {
-                Inspector::<DB>::selfdestruct(inspector);
+                Inspector::<DB>::selfdestruct(inspector, contract, target);
             }
         );
     }
