@@ -2,12 +2,14 @@ use ethers::{
     abi::{ethereum_types::BigEndianHash, Address},
     types::{
         transaction::eip2930::{AccessList, AccessListItem},
-        H256
+        H256,
     },
 };
 use hashbrown::{HashMap, HashSet};
-use revm::{Database, EVMData, Inspector};
-use revm::interpreter::{InstructionResult, Interpreter, opcode};
+use revm::{
+    interpreter::{opcode, InstructionResult, Interpreter},
+    Database, EVMData, Inspector,
+};
 
 use crate::utils::b160_to_h160;
 

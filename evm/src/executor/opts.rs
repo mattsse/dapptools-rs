@@ -1,13 +1,16 @@
-use crate::{executor::fork::CreateFork, utils::{h256_to_b256, h160_to_b160}};
+use crate::{
+    executor::fork::CreateFork,
+    utils::{h160_to_b160, h256_to_b256},
+};
 use ethers::{
     providers::{Middleware, Provider},
     solc::utils::RuntimeOrHandle,
     types::{Address, Chain, H256, U256},
 };
 use eyre::WrapErr;
-use revm::primitives::{BlockEnv, CfgEnv, SpecId, TxEnv, U256 as rU256};
 use foundry_common::{self, ProviderBuilder, RpcUrl, ALCHEMY_FREE_TIER_CUPS};
 use foundry_config::Config;
+use revm::primitives::{BlockEnv, CfgEnv, SpecId, TxEnv, U256 as rU256};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::fork::environment;
@@ -79,7 +82,10 @@ impl EvmOpts {
     }
 
     /// Returns the `revm::Env` configured with settings retrieved from the endpoints
-    pub async fn fork_evm_env(&self, fork_url: impl AsRef<str>) -> eyre::Result<revm::primitives::Env> {
+    pub async fn fork_evm_env(
+        &self,
+        fork_url: impl AsRef<str>,
+    ) -> eyre::Result<revm::primitives::Env> {
         let fork_url = fork_url.as_ref();
         let provider = ProviderBuilder::new(fork_url)
             .compute_units_per_second(self.get_compute_units_per_second())

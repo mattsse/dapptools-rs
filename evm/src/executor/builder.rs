@@ -1,4 +1,3 @@
-use ethers::types::U256;
 use super::{
     inspector::{Cheatcodes, Fuzzer, InspectorStackConfig},
     Executor,
@@ -7,6 +6,7 @@ use crate::{
     executor::{backend::Backend, inspector::CheatsConfig},
     fuzz::{invariant::RandomCallGenerator, strategies::EvmFuzzState},
 };
+use ethers::types::U256;
 use revm::primitives::{Env, SpecId};
 
 /// The builder that allows to configure an evm [`Executor`] which a stack of optional

@@ -9,7 +9,8 @@ use crate::{
     executor::{
         backend::DatabaseExt, inspector::cheatcodes::env::RecordedLogs, CHEATCODE_ADDRESS,
         HARDHAT_CONSOLE_ADDRESS,
-    }, utils::{h160_to_b160, b160_to_h160, b256_to_h256},
+    },
+    utils::{b160_to_h160, b256_to_h256, h160_to_b160},
 };
 use bytes::Bytes;
 use ethers::{
@@ -20,6 +21,11 @@ use ethers::{
     },
 };
 use itertools::Itertools;
+use revm::{
+    interpreter::{opcode, CallInputs, CreateInputs, Gas, InstructionResult, Interpreter},
+    primitives::{BlockEnv, TransactTo, B160, B256},
+    EVMData, Inspector,
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -29,9 +35,6 @@ use std::{
     sync::Arc,
 };
 use tracing::trace;
-use revm::{EVMData, Inspector, primitives::{B160, B256}};
-use revm::interpreter::{CallInputs, CreateInputs, Gas, InstructionResult, Interpreter, opcode};
-use revm::primitives::{BlockEnv, TransactTo};
 
 /// Cheatcodes related to the execution environment.
 mod env;
@@ -215,7 +218,9 @@ impl Cheatcodes {
             .unwrap_or_default();
         let created_address = get_create_address(inputs, old_nonce);
 
-        if data.journaled_state.depth > 1 && !data.db.has_cheatcode_access(b160_to_h160(inputs.caller)) {
+        if data.journaled_state.depth > 1 &&
+            !data.db.has_cheatcode_access(b160_to_h160(inputs.caller))
+        {
             // we only grant cheat code access for new contracts if the caller also has
             // cheatcode access and the new contract is created in top most call
             return
@@ -274,7 +279,12 @@ where
         InstructionResult::Continue
     }
 
-    fn step(&mut self, interpreter: &mut Interpreter, _: &mut EVMData<'_, DB>, _: bool) -> InstructionResult {
+    fn step(
+        &mut self,
+        interpreter: &mut Interpreter,
+        _: &mut EVMData<'_, DB>,
+        _: bool,
+    ) -> InstructionResult {
         // reset gas if gas metering is turned off
         match self.gas_metering {
             Some(None) => {
@@ -370,7 +380,14 @@ where
         if !self.expected_emits.is_empty() {
             handle_expect_emit(
                 self,
-                RawLog { topics: topics.to_vec().into_iter().map(|topic| b256_to_h256(topic)).collect_vec(), data: data.to_vec() },
+                RawLog {
+                    topics: topics
+                        .to_vec()
+                        .into_iter()
+                        .map(|topic| b256_to_h256(topic))
+                        .collect_vec(),
+                    data: data.to_vec(),
+                },
                 &b160_to_h160(*address),
             );
         }
@@ -379,7 +396,14 @@ where
         if let Some(storage_recorded_logs) = &mut self.recorded_logs {
             storage_recorded_logs.entries.push(Log {
                 emitter: b160_to_h160(*address),
-                inner: RawLog { topics: topics.to_vec().into_iter().map(|topic| b256_to_h256(topic)).collect_vec(), data: data.to_vec() },
+                inner: RawLog {
+                    topics: topics
+                        .to_vec()
+                        .into_iter()
+                        .map(|topic| b256_to_h256(topic))
+                        .collect_vec(),
+                    data: data.to_vec(),
+                },
             });
         }
     }
@@ -416,13 +440,23 @@ where
                     value: Some(call.transfer.value.into()),
                 };
                 if let Some(mock_retdata) = mocks.get(&ctx) {
-                    return (InstructionResult::Return, Gas::new(call.gas_limit), mock_retdata.clone())
+                    return (
+                        InstructionResult::Return,
+                        Gas::new(call.gas_limit),
+                        mock_retdata.clone(),
+                    )
                 } else if let Some((_, mock_retdata)) = mocks.iter().find(|(mock, _)| {
                     mock.calldata.len() <= call.input.len() &&
                         *mock.calldata == call.input[..mock.calldata.len()] &&
-                        mock.value.map(|value| value == call.transfer.value.into()).unwrap_or(true)
+                        mock.value
+                            .map(|value| value == call.transfer.value.into())
+                            .unwrap_or(true)
                 }) {
-                    return (InstructionResult::Return, Gas::new(call.gas_limit), mock_retdata.clone())
+                    return (
+                        InstructionResult::Return,
+                        Gas::new(call.gas_limit),
+                        mock_retdata.clone(),
+                    )
                 }
             }
 
@@ -465,14 +499,22 @@ where
                     // into 1559, in the cli package, relatively easily once we
                     // know the target chain supports EIP-1559.
                     if !is_static {
-                        if let Err(err) =
-                            data.journaled_state.load_account(h160_to_b160(broadcast.new_origin), data.db)
+                        if let Err(err) = data
+                            .journaled_state
+                            .load_account(h160_to_b160(broadcast.new_origin), data.db)
                         {
-                            return (InstructionResult::Revert, Gas::new(call.gas_limit), err.encode_string())
+                            return (
+                                InstructionResult::Revert,
+                                Gas::new(call.gas_limit),
+                                err.encode_string(),
+                            )
                         }
 
-                        let account =
-                            data.journaled_state.state().get_mut(&h160_to_b160(broadcast.new_origin)).unwrap();
+                        let account = data
+                            .journaled_state
+                            .state()
+                            .get_mut(&h160_to_b160(broadcast.new_origin))
+                            .unwrap();
 
                         self.broadcastable_transactions.push_back(BroadcastableTransaction {
                             rpc: data.db.active_fork_url(),
@@ -516,7 +558,9 @@ where
         retdata: Bytes,
         _: bool,
     ) -> (InstructionResult, Gas, Bytes) {
-        if call.contract == h160_to_b160(CHEATCODE_ADDRESS) || call.contract == h160_to_b160(HARDHAT_CONSOLE_ADDRESS) {
+        if call.contract == h160_to_b160(CHEATCODE_ADDRESS) ||
+            call.contract == h160_to_b160(HARDHAT_CONSOLE_ADDRESS)
+        {
             return (status, remaining_gas, retdata)
         }
 
@@ -633,7 +677,9 @@ where
         if let TransactTo::Call(test_contract) = data.env.tx.transact_to {
             // if a call to a different contract than the original test contract returned with
             // `Stop` we check if the contract actually exists on the active fork
-            if data.db.is_forked_mode() && status == InstructionResult::Stop && call.contract != test_contract
+            if data.db.is_forked_mode() &&
+                status == InstructionResult::Stop &&
+                call.contract != test_contract
             {
                 self.fork_revert_diagnostic =
                     data.db.diagnose_revert(b160_to_h160(call.contract), &data.journaled_state);
@@ -653,7 +699,9 @@ where
 
         // Apply our prank
         if let Some(prank) = &self.prank {
-            if data.journaled_state.depth() >= prank.depth && call.caller == h160_to_b160(prank.prank_caller) {
+            if data.journaled_state.depth() >= prank.depth &&
+                call.caller == h160_to_b160(prank.prank_caller)
+            {
                 // At the target depth we set `msg.sender`
                 if data.journaled_state.depth() == prank.depth {
                     call.caller = h160_to_b160(prank.new_caller);
@@ -671,8 +719,15 @@ where
             if data.journaled_state.depth() == broadcast.depth &&
                 call.caller == h160_to_b160(broadcast.original_caller)
             {
-                if let Err(err) = data.journaled_state.load_account(h160_to_b160(broadcast.new_origin), data.db) {
-                    return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
+                if let Err(err) =
+                    data.journaled_state.load_account(h160_to_b160(broadcast.new_origin), data.db)
+                {
+                    return (
+                        InstructionResult::Revert,
+                        None,
+                        Gas::new(call.gas_limit),
+                        err.encode_string(),
+                    )
                 }
 
                 data.env.tx.caller = h160_to_b160(broadcast.new_origin);
@@ -685,7 +740,12 @@ where
                 ) {
                     Ok(val) => val,
                     Err(err) => {
-                        return (InstructionResult::Revert, None, Gas::new(call.gas_limit), err.encode_string())
+                        return (
+                            InstructionResult::Revert,
+                            None,
+                            Gas::new(call.gas_limit),
+                            err.encode_string(),
+                        )
                     }
                 };
 
@@ -747,7 +807,12 @@ where
                     retdata,
                 ) {
                     Err(retdata) => (InstructionResult::Revert, None, remaining_gas, retdata),
-                    Ok((address, retdata)) => (InstructionResult::Return, address.map(h160_to_b160), remaining_gas, retdata),
+                    Ok((address, retdata)) => (
+                        InstructionResult::Return,
+                        address.map(h160_to_b160),
+                        remaining_gas,
+                        retdata,
+                    ),
                 }
             }
         }
