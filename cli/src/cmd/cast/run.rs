@@ -16,7 +16,7 @@ use forge::{
     },
     revm::primitives::U256 as rU256,
     trace::{identifier::EtherscanIdentifier, CallTraceDecoderBuilder, TraceKind},
-    utils::{h256_to_b256},
+    utils::h256_to_b256,
 };
 use foundry_common::try_get_http_provider;
 use foundry_config::{find_project_root_path, Config};
