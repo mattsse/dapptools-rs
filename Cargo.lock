@@ -5418,9 +5418,9 @@ dependencies = [
 
 [[package]]
 name = "revm"
-version = "3.1.0"
+version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02f8e1d10d4d381e657b40c7fc704373ea5985a6a77a48a048ae0b969d5072b3"
+checksum = "c0dde669837bf6b0ca1b9c6ea02e89f951496a321bfebbba14322e3f0ae80985"
 dependencies = [
  "auto_impl 1.0.1",
  "revm-interpreter",
@@ -5431,9 +5431,9 @@ dependencies = [
 
 [[package]]
 name = "revm-interpreter"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd02c0cf375af9e4bc3d5ed645de9b28fe911793adce0c2b94f52ecff6818c23"
+checksum = "2f408c834f251dc33ca424b027c132f2cfe541335c5d9895e04d2987f9cfd071"
 dependencies = [
  "derive_more",
  "enumn",
@@ -5444,9 +5444,9 @@ dependencies = [
 
 [[package]]
 name = "revm-precompile"
-version = "2.0.1"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d95e1299235ef4580feb34b68c2ff13b59bc09dbbf6ed5f1d50ec5731f17c422"
+checksum = "10a3eabf08ea9e4063f5531b8735e29344d9d6eaebaa314c58253f6c17fcdf2d"
 dependencies = [
  "k256 0.13.0",
  "num",
@@ -5461,9 +5461,9 @@ dependencies = [
 
 [[package]]
 name = "revm-primitives"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f75dc073614bcab964c77a58f66755d5be6f99cd2ca438dc4a561b04f34894a"
+checksum = "180427e1169b860ab63eaa5bcff158010073646abf3312aed11a1d7aa1aa8291"
 dependencies = [
  "auto_impl 1.0.1",
  "bitvec 1.0.1",
@@ -6181,9 +6181,9 @@ dependencies = [
 
 [[package]]
 name = "sha3"
-version = "0.10.6"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdf0c33fae925bdc080598b84bc15c55e7b9a4a43b3c704da051f977469691c9"
+checksum = "54c2bb1a323307527314a36bfb73f24febb08ce2b8a554bf4ffd6f51ad15198c"
 dependencies = [
  "digest 0.10.6",
  "keccak",

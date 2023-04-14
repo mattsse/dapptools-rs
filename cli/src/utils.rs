@@ -6,7 +6,7 @@ use ethers::{
     types::U256,
     utils::format_units,
 };
-use forge::executor::SpecId;
+use forge::revm::primitives::SpecId;
 use foundry_config::{Chain, Config};
 use std::{
     future::Future,
