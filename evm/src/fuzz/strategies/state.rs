@@ -15,8 +15,8 @@ use parking_lot::RwLock;
 use proptest::prelude::{BoxedStrategy, Strategy};
 use revm::{
     db::{CacheDB, DatabaseRef},
+    interpreter::opcode::{self, spec_opcode_gas},
     primitives::SpecId,
-    interpreter::{opcode, spec_opcode_gas},
 };
 use std::{
     collections::BTreeSet,
@@ -89,7 +89,7 @@ pub fn build_initial_state<DB: DatabaseRef>(
     let mut state = FuzzDictionary::default();
 
     for (address, account) in db.accounts.iter() {
-        let address : Address = (*address).into();
+        let address: Address = (*address).into();
         // Insert basic account information
         state.insert(H256::from(address).into());
 
@@ -107,8 +107,8 @@ pub fn build_initial_state<DB: DatabaseRef>(
         if include_storage {
             // Insert storage
             for (slot, value) in &account.storage {
-                let slot  = (*slot).into();
-                let value  = (*value).into();
+                let slot = (*slot).into();
+                let value = (*value).into();
                 state.insert(utils::u256_to_h256_be(slot).into());
                 state.insert(utils::u256_to_h256_be(value).into());
             }
@@ -236,8 +236,10 @@ pub fn collect_created_contracts(
                             artifact_filters.get_targeted_functions(artifact, abi)?
                         {
                             created_contracts.push(b160_to_h160(*address));
-                            writable_targeted
-                                .insert(b160_to_h160(*address), (artifact.name.clone(), abi.clone(), functions));
+                            writable_targeted.insert(
+                                b160_to_h160(*address),
+                                (artifact.name.clone(), abi.clone(), functions),
+                            );
                         }
                     }
                 }
